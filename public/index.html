@@ -1,60 +1,86 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>LAN Chat — P2P + Socket.io</title>
-<style>body{font-family:Arial;background:#0f1720;color:#eef2ff;margin:0;padding:12px}#app{max-width:900px;margin:0 auto}.top{display:flex;gap:8px;margin-bottom:8px}input,button{padding:8px;border-radius:6px;border:none}input{background:#071026;color:#e6eef8}button{background:#1f9d55;color:white;cursor:pointer}#messages{list-style:none;padding:10px;height:60vh;overflow:auto;background:#071224;border-radius:8px}#messages li{margin:6px 0;padding:8px;background:#0b2233;border-radius:6px;position:relative}.time{float:right;color:#9fb0c8;font-size:12px}.status{margin-left:8px;color:#9fb0c8}.controls{display:flex;gap:8px;align-items:center}.small{padding:6px 8px;font-size:14px}</style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Real-Time Chat App</title>
+<style>
+  body { margin:0; padding:0; font-family: Arial, sans-serif; background:#eceff1; display:flex; justify-content:center; align-items:center; height:100vh; }
+  .chat-container { width:380px; height:600px; background:#fff; border-radius:12px; box-shadow:0 4px 15px rgba(0,0,0,0.2); display:flex; flex-direction:column; overflow:hidden; }
+  .chat-header { background:#1976d2; color:#fff; padding:16px; text-align:center; font-size:20px; font-weight:bold; }
+  .messages { flex:1; padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:70%; padding:10px 14px; border-radius:10px; font-size:15px; word-break: break-word; }
+  .sent { background:#1976d2; color:#fff; align-self:flex-end; border-bottom-right-radius:0; }
+  .received { background:#e0e0e0; align-self:flex-start; border-bottom-left-radius:0; }
+  .input-area { display:flex; padding:12px; border-top:1px solid #ccc; background:#fafafa; }
+  .input-area input { flex:1; padding:10px; border:1px solid #ccc; border-radius:8px; outline:none; font-size:15px; }
+  .input-area button { margin-left:8px; padding:10px 16px; background:#1976d2; color:white; border:none; border-radius:8px; cursor:pointer; font-size:15px; }
+  .input-area button:hover { background:#115293; }
+  .user-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; }
+  .user-screen input { padding:10px; font-size:16px; border-radius:8px; border:1px solid #ccc; margin-bottom:12px; }
+  .user-screen button { padding:10px 16px; font-size:16px; border:none; border-radius:8px; background:#1976d2; color:white; cursor:pointer; }
+  .user-screen button:hover { background:#115293; }
+</style>
 </head>
 <body>
-<div id="app">
-  <h2>LAN Chat — P2P (WebRTC) with Socket.io fallback</h2>
-  <div class="top">
-    <input id="username" placeholder="Your name" />
-    <input id="room" placeholder="Room (same for peers)" value="lan-room" />
-    <button id="btn-join" class="small">Join Room</button>
-    <span id="p2p-status" class="status">P2P: not connected</span>
-  </div>
-  <ul id="messages"></ul>
-  <div style="display:flex;gap:8px;margin-top:8px">
-    <input id="input" placeholder="Type message..." style="flex:1" />
-    <button id="send" class="small">Send</button>
-    <label style="background:#1f6aa5;color:white;padding:8px;border-radius:6px;cursor:pointer">📎 <input id="fileInput" type="file" style="display:none"/></label>
-  </div>
-  <div style="margin-top:8px;color:#9fb0c8;font-size:13px"><strong>Note:</strong> This will try P2P first (WebRTC DataChannel). If that fails or isn't open yet, messages use server fallback (Socket.io).</div>
+<div class="user-screen" id="userScreen">
+  <h2>Enter Your Name</h2>
+  <input type="text" id="usernameInput" placeholder="Your name" />
+  <button onclick="joinChat()">Join Chat</button>
 </div>
-<script src="/socket.io/socket.io.js"></script>
+
+<div class="chat-container" id="chatContainer" style="display:none;">
+  <div class="chat-header" id="chatHeader"></div>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <input type="text" id="msgInput" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
 <script>
-  const socket = io();
-  const usernameEl = document.getElementById('username');
-  const roomEl = document.getElementById('room');
-  const btnJoin = document.getElementById('btn-join');
-  const messagesEl = document.getElementById('messages');
-  const inputEl = document.getElementById('input');
-  const sendBtn = document.getElementById('send');
-  const p2pStatus = document.getElementById('p2p-status');
-  const fileInput = document.getElementById('fileInput');
-  let pc = null;
-  let dataChannel = null;
-  const ROOM_DEFAULT = 'lan-room';
-  let joinedRoom = null;
-  const STUN_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
-  function addMsg(html){const li=document.createElement('li');li.innerHTML=html;messagesEl.appendChild(li);messagesEl.scrollTop=messagesEl.scrollHeight;}
-  fetch('/api/messages').then(r=>r.json()).then(data=>{data.forEach(m => addMsg(`<b>${escapeHtml(m.username)}:</b> ${m.file ? ('<a href="'+m.file+'" style="color:#7fd3ff">'+escapeHtml(m.text)+'</a>') : escapeHtml(m.text)} <span class="time">${escapeHtml(m.timestamp)}</span>`));}).catch(()=>{});
-  socket.on('chat message', (msg) => {addMsg(`<b>${escapeHtml(msg.username)}:</b> ${msg.file ? ('<a href="'+msg.file+'" style="color:#7fd3ff">'+escapeHtml(msg.text)+'</a>') : escapeHtml(msg.text)} <span class="time">${escapeHtml(msg.timestamp)}</span>`);});
-  socket.on('peer-joined', (peerId) => {console.log('peer-joined', peerId); if(joinedRoom) startPeer(true, peerId);});
-  socket.on('webrtc-offer', async ({ from, offer }) => {console.log('webrtc-offer from', from); await startPeer(false, from); try { await pc.setRemoteDescription(new RTCSessionDescription(offer)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); socket.emit('webrtc-answer', { to: from, answer, room: joinedRoom }); } catch(e){ console.error(e); }});
-  socket.on('webrtc-answer', async ({ from, answer }) => { console.log('webrtc-answer from', from); try { await pc.setRemoteDescription(new RTCSessionDescription(answer)); } catch(e){ console.error(e); }});
-  socket.on('webrtc-ice', async ({ from, candidate }) => { try { if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e){ console.error('addIceCandidate error', e); }});
-  btnJoin.onclick = () => { const room = (roomEl.value || ROOM_DEFAULT).trim(); if (!room) return alert('Enter room name'); joinedRoom = room; socket.emit('join-room', room); addMsg(`<i>Joined room: ${escapeHtml(room)}</i>`); };
-  async function startPeer(isCaller, remoteId) { if (pc) { console.log('PC already exists - skipping new create'); return; } pc = new RTCPeerConnection({ iceServers: STUN_SERVERS }); pc.onicecandidate = (ev) => { if (ev.candidate) { socket.emit('webrtc-ice', { candidate: ev.candidate, to: remoteId, room: joinedRoom }); } }; pc.onconnectionstatechange = () => { console.log('PC state', pc.connectionState); if (pc.connectionState === 'connected') { p2pStatus.textContent = 'P2P: connected'; } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') { p2pStatus.textContent = 'P2P: not connected'; } }; if (!isCaller) { pc.ondatachannel = (ev) => { dataChannel = ev.channel; setupDataChannel(); }; } else { dataChannel = pc.createDataChannel('chat'); setupDataChannel(); } try { if (isCaller) { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); socket.emit('webrtc-offer', { offer, to: remoteId, room: joinedRoom }); } } catch(e) { console.error('startPeer error', e); } }
-  function setupDataChannel() { if (!dataChannel) return; dataChannel.onopen = () => { console.log('DataChannel open'); p2pStatus.textContent = 'P2P: connected'; addMsg('<i>P2P data channel opened</i>'); }; dataChannel.onmessage = (ev) => { if (typeof ev.data === 'string') { addMsg(`<b>P2P:</b> ${escapeHtml(ev.data)} <span class="time">${new Date().toLocaleTimeString()}</span>`); } else { addMsg(`<b>P2P:</b> <i>binary message received</i> <span class="time">${new Date().toLocaleTimeString()}</span>`); } }; dataChannel.onclose = () => { addMsg('<i>P2P data channel closed</i>'); p2pStatus.textContent = 'P2P: not connected'; }; dataChannel.onerror = (e) => console.error('DC error', e); }
-  sendBtn.onclick = sendChat; inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
-  function sendChat(){ const text = inputEl.value.trim(); if(!text) return; const username = usernameEl.value.trim() || 'Anonymous'; if (dataChannel && dataChannel.readyState === 'open') { dataChannel.send(text); addMsg(`<b>You (P2P):</b> ${escapeHtml(text)} <span class="time">${new Date().toLocaleTimeString()}</span>`); } else { socket.emit('chat message', { username, text }); addMsg(`<b>You (Server):</b> ${escapeHtml(text)} <span class="time">${new Date().toLocaleTimeString()}</span>`); } inputEl.value = ''; }
-  fileInput.addEventListener('change', async function(){ const file = this.files[0]; if (!file) return; const username = usernameEl.value.trim() || 'Anonymous'; const fd = new FormData(); fd.append('file', file); fd.append('username', username); addMsg(`<i>Uploading file: ${escapeHtml(file.name)} ...</i>`); try { const res = await fetch('/upload', { method: 'POST', body: fd }); const j = await res.json(); if (j.success) addMsg(`<i>File uploaded: <a href="${j.url}" target="_blank">${escapeHtml(file.name)}</a></i>`); } catch(e){ addMsg('<i>Upload error</i>'); console.error(e); } this.value = ''; });
-  function escapeHtml(s){ return String(s || '').replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-  window.addEventListener('beforeunload', () => { if (pc) try { pc.close(); } catch(e){} });
-  socket.on('connect', ()=> console.log('socket connected', socket.id)); socket.on('disconnect', ()=> console.log('socket disconnected'));
+let username = '';
+const messages = document.getElementById('messages');
+const input = document.getElementById('msgInput');
+
+function joinChat() {
+  const nameInput = document.getElementById('usernameInput');
+  if (!nameInput.value.trim()) return;
+  username = nameInput.value.trim();
+  document.getElementById('userScreen').style.display = 'none';
+  document.getElementById('chatContainer').style.display = 'flex';
+  document.getElementById('chatHeader').textContent = `Logged in as: ${username}`;
+  initWebSocket();
+}
+
+let socket;
+function initWebSocket() {
+  socket = new WebSocket('wss://dependent-poppy-brtechnologyorgnation-366e7b67.koyeb.app');
+  socket.addEventListener('open', () => console.log('Connected to WebSocket server'));
+  socket.addEventListener('message', (event) => {
+    const data = JSON.parse(event.data);
+    displayMessage(data.username, data.message);
+  });
+}
+
+function sendMessage() {
+  const text = input.value.trim();
+  if (!text) return;
+  const data = { username, message: text };
+  socket.send(JSON.stringify(data));
+  displayMessage(username, text);
+  input.value = '';
+}
+
+function displayMessage(sender, text) {
+  const msg = document.createElement('div');
+  msg.className = sender === username ? 'msg sent' : 'msg received';
+  msg.textContent = `${sender}: ${text}`;
+  messages.appendChild(msg);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+input.addEventListener('keyup', (e) => { if (e.key === 'Enter') sendMessage(); });
 </script>
 </body>
 </html>
