@@ -1,13 +1,18 @@
 {
-  "name": "lan-chat-p2p",
+  "name": "lanchatapp-p2p",
   "version": "1.0.0",
+  "description": "Multi-user WebSocket chat app (Koyeb compatible)",
   "main": "server.js",
   "scripts": {
-    "start": "node/server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "multer": "^1.4.5"
-  }
+    "ws": "^8.13.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Brtechnology369",
+  "license": "MIT"
 }

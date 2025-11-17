@@ -1,13 +1,16 @@
-LAN Chat P2P (WebRTC) + Socket.io signaling
+cd /path/to/RealTimeChatApp_P2P   # Repo folder में जाओ
 
-Files:
-- server.js
-- package.json
-- messages.json
-- public/index.html
-- public/uploads/.gitkeep
+# अगर कोई पुरानी गलत JSON है, delete करो
+rm message.json
 
-Usage:
-1. npm install express socket.io multer
-2. node server.js
-3. Open http://<server-ip>:3000 on two devices (same room name) and press Join Room.
+# Dependencies install करो और lockfile generate करो
+npm install                       # ये package-lock.json बनाएगा
+
+# Add सभी files
+git add .
+
+# Commit message
+git commit -m "Add server.js, package.json, package-lock.json, public files for Koyeb deploy"
+
+# Push to GitHub
+git push
